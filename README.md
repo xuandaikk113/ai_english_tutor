@@ -1,2 +1,2 @@
-# ai_english_tutor
+# AI English Tutor
 An AI Bot to practice english speaking.
