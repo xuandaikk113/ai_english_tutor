@@ -10,6 +10,7 @@ import json
 import edge_tts
 import asyncio
 import subprocess
+import pygame
 
 
 class EnglishPracticeApp:
@@ -17,7 +18,7 @@ class EnglishPracticeApp:
         self.root = root
         self.root.title("English Speaking Practice with AI")
         self.root.geometry("1280x720")
-        self.root.attributes("-topmost", True)  # Make the window always on top
+        # self.root.attributes("-topmost", True)  # Make the window always on top
         self.scenarios = {}
 
         # Initialize Ollama endpoint
@@ -35,6 +36,8 @@ class EnglishPracticeApp:
 
         # Initialize conversation history
         self.conversation_history = []
+
+        self.recording_thread = None
 
     def setup_gui(self):
         # Main container with padding
@@ -117,37 +120,37 @@ class EnglishPracticeApp:
             },
             "Daily Routines": {
                 "system_prompt": "You are helping someone practice discussing daily routines and activities in English. Ask about their schedule and habits.",
-                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Daily Routines topic. please ask me first",
+                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Daily Routines topic. please ask me first. keep the response brief",
                 "description": "Practice describing your daily schedule, habits, and regular activities. Learn time-related vocabulary and expressions.",
             },
             "Giving Directions": {
                 "system_prompt": "You are a local helping someone find their way. Ask where they want to go and practice giving directions.",
-                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Giving Directions topic. please ask me first",
+                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Giving Directions topic. please ask me first. keep the response brief",
                 "description": "Learn to give and follow directions in English. Practice using location-based vocabulary and prepositions.",
             },
             "Personal Information": {
                 "system_prompt": "You are meeting someone new and exchanging basic personal information. Ask appropriate questions about their background.",
-                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Personal Information topic. please ask me first",
+                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Personal Information topic. please ask me first. keep the response brief",
                 "description": "Practice introducing yourself and sharing basic personal information. Learn to ask and answer common questions about yourself.",
             },
             "Time Expressions": {
                 "system_prompt": "You are helping someone practice telling time and using time expressions in English.",
-                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Time Expressions topic. please ask me first",
+                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Time Expressions topic. please ask me first. keep the response brief",
                 "description": "Learn to tell time and use time-related expressions in English. Practice different ways to talk about time and schedules.",
             },
             "Numbers Practice": {
                 "system_prompt": "You are helping someone practice using numbers in English conversation.",
-                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Numbers Practice topic. please ask me first",
+                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Numbers Practice topic. please ask me first. keep the response brief",
                 "description": "Practice using numbers in different contexts like prices, dates, phone numbers, and measurements.",
             },
             "Party Meeting": {
                 "system_prompt": "You are at a party meeting new people. Keep the conversation light and social.",
-                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Party Meeting topic. please ask me first",
+                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Party Meeting topic. please ask me first. keep the response brief",
                 "description": "Practice social interactions at parties or gatherings. Learn small talk and how to make new connections.",
             },
             "Dating Scenario": {
                 "system_prompt": "You are on a first date. Keep the conversation appropriate and friendly.",
-                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Dating Scenario topic. please ask me first",
+                "initial_prompt": "you are my english tutor, please help me practice talking in english, i want us to talk about Dating Scenario topic. please ask me first. keep the response brief",
                 "description": "Practice conversation skills for dating scenarios. Learn appropriate topics and questions for first dates.",
             },
         }
@@ -197,15 +200,6 @@ class EnglishPracticeApp:
             self.start_recording()
         else:
             self.stop_recording()
-
-    def start_recording(self):
-        self.is_recording = True
-        self.record_button.configure(text="Stop Recording")
-        self.status_label.configure(text="Recording...")
-
-        # Start recording in a separate thread
-        self.recording_thread = Thread(target=self.record_audio)
-        self.recording_thread.start()
 
     def record_audio(self):
         CHUNK = 1024
@@ -324,9 +318,16 @@ class EnglishPracticeApp:
 
                     if os.path.exists("output.mp3"):
                         # Initialize pygame mixer
-                        #
-                        # os.system("start output.mp3")
-                        subprocess.Popen(["start", "output.mp3"], shell=True)
+                        pygame.mixer.init()
+                        pygame.mixer.music.load("output.mp3")
+                        pygame.mixer.music.play()
+
+                        # Wait for the music to finish playing
+                        while pygame.mixer.music.get_busy():
+                            await asyncio.sleep(1)
+
+                        # Quit the mixer after playback
+                        pygame.mixer.quit()
                     else:
                         print("TTS: output.mp3 file not found")
                 finally:
@@ -334,7 +335,11 @@ class EnglishPracticeApp:
                     self.is_speaking = False
                     self.root.after(0, self.enable_recording_button)
 
-            await speak()
+            def run_speak():
+                asyncio.run(speak())
+
+            # Run the speak function in a separate thread
+            Thread(target=run_speak).start()
         except Exception as e:
             self.is_speaking = False
             self.status_label.configure(text=f"TTS Error: {str(e)}")
