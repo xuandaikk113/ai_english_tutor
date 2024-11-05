@@ -347,7 +347,7 @@ class EnglishPracticeApp:
 
             # Prepare the request payload for Ollama
             payload = {
-                "model": "llama3.2",
+                "model": "mistral",
                 "messages": self.conversation_history,
                 "stream": False,
             }
