@@ -1,27 +1,27 @@
 import tkinter as tk
 from tkinter import ttk
 import speech_recognition as sr
-import pyttsx3
+import os
 import pyaudio
 import wave
 from threading import Thread
 import requests  # Added for Ollama API calls
+import json
 import edge_tts
 import asyncio
+import subprocess
 
 
 class EnglishPracticeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("English Speaking Practice with AI")
-        self.root.geometry("800x600")
+        self.root.geometry("1280x720")
+        self.root.attributes("-topmost", True)  # Make the window always on top
         self.scenarios = {}
 
         # Initialize Ollama endpoint
         self.ollama_endpoint = "http://localhost:11434/api/chat"
-
-        # Initialize TTS engine
-        self.setup_tts_engine()
 
         # Initialize variables
         self.is_recording = False
@@ -50,12 +50,6 @@ class EnglishPracticeApp:
             left_panel, text="Select Scenario", padding="10"
         )
         scenario_frame.pack(fill="x", expand=True)
-
-        # Scenario Description
-        self.scenario_desc = tk.Text(left_panel, height=8, wrap=tk.WORD)
-        self.scenario_desc.pack(fill="x", pady=10)
-        self.scenario_desc.insert("1.0", "Select a scenario to see its description...")
-        self.scenario_desc.config(state="disabled")
 
         # Create radio buttons for scenarios
         self.scenario_var = tk.StringVar()
@@ -110,41 +104,6 @@ class EnglishPracticeApp:
         self.status_label = ttk.Label(control_frame, text="Please select a scenario")
         self.status_label.pack(side="left", padx=5)
 
-        # Voice Settings Frame
-        voice_frame = ttk.LabelFrame(right_panel, text="Voice Settings", padding="5")
-        voice_frame.pack(fill="x", pady=5)
-
-        # Speed control
-        speed_frame = ttk.Frame(voice_frame)
-        speed_frame.pack(side="left", padx=10)
-        ttk.Label(speed_frame, text="Speed:").pack(side="left")
-        self.speed_var = tk.IntVar(value=150)
-        speed_spinbox = ttk.Spinbox(
-            speed_frame,
-            from_=50,
-            to=300,
-            width=5,
-            textvariable=self.speed_var,
-            command=self.update_voice_settings,
-        )
-        speed_spinbox.pack(side="left", padx=5)
-
-        # Volume control
-        volume_frame = ttk.Frame(voice_frame)
-        volume_frame.pack(side="left", padx=10)
-        ttk.Label(volume_frame, text="Volume:").pack(side="left")
-        self.volume_var = tk.DoubleVar(value=1.0)
-        volume_spinbox = ttk.Spinbox(
-            volume_frame,
-            from_=0.0,
-            to=1.0,
-            increment=0.1,
-            width=5,
-            textvariable=self.volume_var,
-            command=self.update_voice_settings,
-        )
-        volume_spinbox.pack(side="left", padx=5)
-
         # Configure tags for user and bot messages
         self.chat_display.tag_configure("user", justify="right", foreground="blue")
         self.chat_display.tag_configure("bot", justify="left", foreground="green")
@@ -193,19 +152,6 @@ class EnglishPracticeApp:
             },
         }
 
-    def on_scenario_selected(self):
-        scenario = self.scenario_var.get()
-        if scenario in self.scenarios:
-            # Update description
-            self.scenario_desc.config(state="normal")
-            self.scenario_desc.delete(1.0, tk.END)
-            self.scenario_desc.insert(1.0, self.scenarios[scenario]["description"])
-            self.scenario_desc.config(state="disabled")
-
-            # Enable start button
-            self.start_button.config(state="normal")
-            self.status_label.config(text="Click 'Start Conversation' to begin")
-
     def setup_audio(self):
         # Initialize speech recognizer
         self.recognizer = sr.Recognizer()
@@ -213,20 +159,15 @@ class EnglishPracticeApp:
     def on_scenario_selected(self):
         scenario = self.scenario_var.get()
         if scenario in self.scenarios:
-            self.chat_display.delete(1.0, tk.END)
-            self.start_conversation(scenario)
+            # Enable start button
+            self.start_button.config(state="normal")
+            self.status_label.config(text="Click 'Start Conversation' to begin")
 
     def start_conversation(self, scenario):
-        # system_prompt = self.scenarios[scenario]["system_prompt"]
         initial_prompt = self.scenarios[scenario]["initial_prompt"]
 
         # Get AI response
-        # response = self.get_ai_response(system_prompt, initial_prompt)
         response = self.get_ai_response(initial_prompt)
-
-        # Display and speak response
-        self.display_message("AI: " + response, "bot")
-        self.speak_text(response)
 
     def start_new_conversation(self):
         # Clear chat display
@@ -240,16 +181,12 @@ class EnglishPracticeApp:
 
         # Start conversation
         self.conversation_active = True
-        # system_prompt = self.scenarios[scenario]["system_prompt"]
         initial_prompt = self.scenarios[scenario]["initial_prompt"]
 
         # Get AI response
-        # response = self.get_ai_response(system_prompt, initial_prompt)
         response = self.get_ai_response(initial_prompt)
 
-        # Display and speak response
-        self.display_message("AI: " + response, role="bot")
-        self.speak_text(response)
+        asyncio.run(self.speak_text(response))
 
         # Update status
         self.status_label.config(text="Ready for your response")
@@ -269,31 +206,6 @@ class EnglishPracticeApp:
         # Start recording in a separate thread
         self.recording_thread = Thread(target=self.record_audio)
         self.recording_thread.start()
-
-    def stop_recording(self):
-        self.is_recording = False
-        self.record_button.configure(text="Start Recording")
-        self.status_label.configure(text="Processing...")
-
-        # Wait for recording thread to finish
-        self.recording_thread.join()
-
-        # Process the recording
-        text = self.speech_to_text()
-        if text:
-            self.display_message("You: " + text)
-
-            # Get AI response
-            # scenario = self.scenario_var.get()
-            # system_prompt = self.scenarios[scenario]["system_prompt"]
-            # response = self.get_ai_response(system_prompt, text)
-            response = self.get_ai_response(text)
-
-            # Display and speak AI response
-            self.display_message("AI: " + response)
-            self.speak_text(response)
-
-        self.status_label.configure(text="Ready")
 
     def record_audio(self):
         CHUNK = 1024
@@ -347,17 +259,43 @@ class EnglishPracticeApp:
 
             # Prepare the request payload for Ollama
             payload = {
-                "model": "mistral",
-                "messages": self.conversation_history,
-                "stream": False,
+                "model": "llama3.2",
+                "messages": self.conversation_history[-10:],
+                "stream": True,
             }
 
             # Make the request to Ollama
-            response = requests.post(self.ollama_endpoint, json=payload)
+            response = requests.post(self.ollama_endpoint, json=payload, stream=True)
 
             if response.status_code == 200:
-                response_data = response.json()
-                ai_message = response_data["message"]["content"]
+                ai_message = ""
+
+                # Track if we've started displaying the message
+                message_started = False
+
+                for chunk in response.iter_lines():
+                    if chunk:
+                        chunk_data = json.loads(chunk.decode("utf-8"))
+                        if (
+                            "message" in chunk_data
+                            and "content" in chunk_data["message"]
+                        ):
+                            # Get the new content
+                            new_content = chunk_data["message"]["content"]
+                            ai_message += new_content
+
+                            # If this is the first chunk, insert new message
+                            if not message_started:
+                                self.chat_display.insert(tk.END, "AI: ", "bot")
+                                message_started = True
+
+                            # Insert the new content
+                            self.chat_display.insert(tk.END, new_content, "bot")
+                            self.chat_display.see(tk.END)
+                            self.root.update_idletasks()
+
+                # Add newlines after the complete message
+                self.chat_display.insert(tk.END, "\n\n")
 
                 # Add AI response to conversation history
                 self.conversation_history.append(
@@ -373,51 +311,6 @@ class EnglishPracticeApp:
         except Exception as e:
             return f"Error getting AI response: {str(e)}"
 
-    def setup_tts_engine(self):
-
-        try:
-            self.engine = pyttsx3.init()
-
-            # Get available voices
-            voices = self.engine.getProperty("voices")
-
-            # Find and set English voice
-            english_voice = None
-            for voice in voices:
-                # Print voice information for debugging
-                print(f"Voice ID: {voice.id}")
-                print(f"Voice Name: {voice.name}")
-                print(f"Voice Languages: {voice.languages}")
-                print("---")
-
-                # Try to find an English voice
-                if "EN" in voice.id.upper():
-                    english_voice = voice
-                    break
-
-            if english_voice:
-                self.engine.setProperty("voice", english_voice.id)
-                print(f"Selected voice: {english_voice.name}")
-            else:
-                print("No English voice found, using default voice")
-
-            # Set default properties
-            self.engine.setProperty("rate", 150)  # Speed of speech
-            self.engine.setProperty("volume", 1.0)  # Volume (0.0 to 1.0)
-
-        except Exception as e:
-            print(f"Error initializing TTS engine: {str(e)}")
-            self.status_label.configure(text="TTS initialization failed")
-
-    def update_voice_settings(self):
-        try:
-            # Update the TTS engine settings based on the current values of speed and volume
-            self.engine.setProperty("rate", self.speed_var.get())
-            self.engine.setProperty("volume", self.volume_var.get())
-            self.status_label.configure(text="Voice settings updated")
-        except Exception as e:
-            self.status_label.configure(text=f"Error updating voice settings: {str(e)}")
-
     async def speak_text(self, text):
         try:
             # Set speaking flag
@@ -427,7 +320,15 @@ class EnglishPracticeApp:
                 try:
                     communicate = edge_tts.Communicate(text, voice="en-US-JennyNeural")
                     await communicate.save("output.mp3")
-                    os.system("start output.mp3")
+                    print("TTS: output.mp3 saved successfully")
+
+                    if os.path.exists("output.mp3"):
+                        # Initialize pygame mixer
+                        #
+                        # os.system("start output.mp3")
+                        subprocess.Popen(["start", "output.mp3"], shell=True)
+                    else:
+                        print("TTS: output.mp3 file not found")
                 finally:
                     # Clear speaking flag and ensure recording button is enabled
                     self.is_speaking = False
@@ -475,8 +376,6 @@ class EnglishPracticeApp:
             # Get AI response
             response = self.get_ai_response(text)
 
-            # Display and speak AI response
-            self.display_message("AI: " + response, "bot")
             asyncio.run(self.speak_text(response))
 
         self.status_label.configure(text="Ready")
@@ -485,6 +384,7 @@ class EnglishPracticeApp:
         if role == "user":
             self.chat_display.insert(tk.END, message + "\n\n", "user")
         else:
+            # For AI messages, just insert the message with proper formatting
             self.chat_display.insert(tk.END, message + "\n\n", "bot")
 
         self.chat_display.see(tk.END)
